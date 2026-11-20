@@ -112,6 +112,9 @@ const services = {
         value: { title: { title: sessionId === 'session-2' ? 'Beta 会话' : '按需标题' } },
       }))
     },
+    async readTitleSnapshot(sessionId) {
+      return { session: { id: sessionId, origin: sessionId === 'session-sub' ? 'subagent' : undefined } }
+    },
     async readSession() {
       return {
         events: [
@@ -311,7 +314,7 @@ const oldRoute = await call('/dsh-session-hub/api/state')
 check('旧会话数据路由已移除', oldRoute.status === 404)
 
 /* ── 工具注册 ──────────────────────────────────────────────────────────── */
-check('注册 5 个模型工具', registeredTools.size === 5, JSON.stringify([...registeredTools.keys()]))
+check('注册 6 个模型工具', registeredTools.size === 6, JSON.stringify([...registeredTools.keys()]))
 check('每个工具都声明 output', [...registeredTools.values()].every((tool) => tool.output?.schema && typeof tool.output.render === 'function'))
 
 /* ── 列表与预览 ────────────────────────────────────────────────────────── */
@@ -380,6 +383,32 @@ check('冷会话读取返回 live=false', missingAgent.live === false)
 
 const clear = await goalTool.execute({ sessionId: 'session-1', action: 'clear', revision: 2 })
 check('清除目标', clear.cleared === true && clear.goal === undefined)
+
+/* ── 接收控制与写作用域 ────────────────────────────────────────────────── */
+const receptionTool = registeredTools.get('session_hub_reception')
+const selfReception = await receptionTool.execute({ action: 'get' }, { agent: { id: 'session-2' } })
+check('默认接受消息', selfReception.enabled === true && selfReception.writeScopes.length === 0)
+
+const paused = await receptionTool.execute({ action: 'set', enabled: false }, { agent: { id: 'session-2' } })
+check('会话可关闭接收', paused.enabled === false)
+const pausedList = await listTool.execute({ query: 'Beta', includeArchived: true })
+check('列表显示免打扰', pausedList.sessions.find((item) => item.sessionId === 'session-2')?.canReceive === false, JSON.stringify(pausedList.sessions.map((item) => ({ id: item.sessionId, canReceive: item.canReceive, title: item.title }))))
+const blocked = await messageTool.execute({ sessionId: 'session-2', message: 'x' }, { agent: { id: 'session-caller' } }).catch((error) => error)
+check('关闭后消息被拒', blocked?.code === 'target-paused')
+
+const notOwner = await receptionTool.execute({ action: 'set', sessionId: 'session-1', enabled: false }, { agent: { id: 'session-2' } }).catch((error) => error)
+check('只能改自己的接收设置', notOwner?.code === 'not-owner')
+
+const reopened = await receptionTool.execute({ action: 'set', enabled: true }, { agent: { id: 'session-2' } })
+check('可重新开启接收', reopened.enabled === true)
+
+const subagent = await messageTool.execute({ sessionId: 'session-sub', message: 'x' }, { agent: { id: 'session-caller' } }).catch((error) => error)
+check('拒绝给子会话发消息', subagent?.code === 'target-subagent')
+
+await receptionTool.execute({ action: 'declare', writeScopes: ['C:/work/a/b'] }, { agent: { id: 'session-2' } })
+const scoped = await messageTool.execute({ sessionId: 'session-3', message: '带作用域', writeScopes: ['C:/work/a'] }, { agent: { id: 'session-caller' } })
+check('写作用域冲突被提示', scoped.conflicts.some((item) => item.sessionId === 'session-2'))
+check('冲突提示不影响发送', scoped.accepted === true)
 
 console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
 process.exit(failed === 0 ? 0 : 1)
