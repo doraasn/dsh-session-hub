@@ -60,13 +60,13 @@
 
 ## 安装
 
-```powershell
-# profile 的 package.json 加 link 依赖，并把包名加入 dsh.profile.bundles
-"@local/dsh-session-hub": "link:C:/Projects/work/dsh-plugins/dsh-session-hub"
-pnpm install --ignore-scripts
+从 DSH 插件市场安装「会话管理」，或在 profile 的 `package.json` 里加：
+
+```jsonc
+"dsh-session-hub": "github:doraasn/dsh-session-hub#v0.1.0"
 ```
 
-改动宿主侧代码后需要重启 DSH；只改客户端设置页刷新页面即可。
+本机开发时仍可用 `link:` 指向源码目录。改动宿主侧代码后需要重启 DSH；只改客户端设置页刷新页面即可。
 
 ## 自测
 

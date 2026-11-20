@@ -2,6 +2,7 @@
   "name": "@local/dsh-session-hub",
   "version": "0.1.0",
   "description": "DSH 会话能力插件：跨项目会话通信/管理/目标工具，设置页逐项开关，无侧栏入口。",
+  "author": "Y77H",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -18,7 +19,9 @@
     "lib/",
     "cordis.patch.yml",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "engines": {
     "dsh": ">=0.2.1-rc.2"
