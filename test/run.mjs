@@ -354,7 +354,7 @@ check('预览只返回最近 N 条', preview.messages.length === 2 && preview.me
 const toolMessage = await messageTool.execute({ sessionId: 'session-2', message: '工具通道测试' }, { agent: { id: 'session-caller' } })
 check('消息工具返回来源', toolMessage.accepted === true && toolMessage.from === 'session-caller')
 check('消息工具返回 messageId', typeof toolMessage.messageId === 'string' && toolMessage.messageId.length > 0)
-const toolDelivery = calls.filter(([name]) => name === 'followup' || name === 'steer').at(-1)
+const toolDelivery = calls.filter(([name]) => name === 'steer').at(-1)
 check('消息走 Agent 收件箱并带 peer source', toolDelivery?.[1]?.message?.source?.kind === 'session-hub-message' && toolDelivery?.[1]?.message?.source?.senderSessionId === 'session-caller')
 check('消息正文带来源前缀', toolDelivery?.[1]?.message?.content?.[0]?.text.includes('[session-hub-message]') === true)
 check('消息后执行 flush', calls.some(([name]) => name === 'flush'))
@@ -381,18 +381,18 @@ const goalTool = registeredTools.get('session_hub_goal')
 const goalRead = await goalTool.execute({ sessionId: 'session-1', action: 'get' })
 check('读取当前目标', goalRead.goal?.phase === 'active' && goalRead.live === true)
 
-const deliveryCountBefore = calls.filter(([name]) => name === 'followup' || name === 'steer').length
+const deliveryCountBefore = calls.filter(([name]) => name === 'steer').length
 const goalCreate = await goalTool.execute({ sessionId: 'session-1', action: 'create', objective: '工具建目标', start: false })
 check('新建目标不启动', goalCreate.goal?.id === 'goal-2' && goalCreate.started === false)
-check('新建目标不产生消息', calls.filter(([name]) => name === 'followup' || name === 'steer').length === deliveryCountBefore)
+check('新建目标不产生消息', calls.filter(([name]) => name === 'steer').length === deliveryCountBefore)
 
 const createAndStart = await goalTool.execute({ sessionId: 'session-1', action: 'create', objective: '工具建目标并启动', start: true })
 check('新建并启动走 resume', createAndStart.started === true && calls.some(([name]) => name === 'goalResume'))
-check('启动不合成人类消息', calls.filter(([name]) => name === 'followup' || name === 'steer').length === deliveryCountBefore)
+check('启动不合成人类消息', calls.filter(([name]) => name === 'steer').length === deliveryCountBefore)
 
 const startActive = await goalTool.execute({ sessionId: 'session-1', action: 'start', revision: 2 })
 check('active 目标也真正 resume', startActive.started === true && calls.filter(([name]) => name === 'goalResume').length >= 2)
-check('start 全程没有消息投递', calls.filter(([name]) => name === 'followup' || name === 'steer').length === deliveryCountBefore)
+check('start 全程没有消息投递', calls.filter(([name]) => name === 'steer').length === deliveryCountBefore)
 
 const pause = await goalTool.execute({ sessionId: 'session-1', action: 'pause', revision: 2 })
 check('暂停目标', pause.goal?.phase === 'paused')
