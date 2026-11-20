@@ -1,4 +1,4 @@
-# 这个 bundle 挂什么：宿主会话路由 + 侧栏「会话管理」入口（点开是全屏管理面板）。
+# 这个 bundle 挂什么：宿主会话工具 + 设置页「会话管理」分区（没有侧栏入口）。
 # name 必须与 package.json 的 name 一致，否则启动报 duplicate factory registration。
 - insert:
     - id: session-hub

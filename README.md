@@ -1,68 +1,65 @@
 # 会话管理（dsh-session-hub）
 
-DSH 侧栏脚部的「会话管理」入口。点开后是一个全屏面板，用来跨项目管理所有会话，并把「发消息、改名字、归档、建目标、启动目标」放在同一处。
+给 DSH 会话里的 Agent 提供会话能力，不提供任何界面入口。设置页里可以逐项开关能力；关闭后工具仍会出现在模型工具列表里，但调用会被拒绝。
 
-## 能做什么
+## 能力与工具
 
-| 分组 | 能力 |
-| --- | --- |
-| 会话通信 | 给任何会话发消息（排队 / 插话），**跨项目**；冷会话由宿主自动唤醒；Ctrl/⌘ + Enter 发送 |
-| 会话管理 | 新建会话（可选目录、名称、Agent 预设）、更名、归档 / 取消归档、置顶 / 取消置顶、打开会话、复制会话、停止当前轮 |
-| 目标 | 给任意会话新建目标、编辑目标、暂停、恢复、完成、清除；「新建并开始 / 开始」会立即给目标会话发一轮启动指令 |
-| 浏览 | 按名称 / 项目 / 目录 / id 搜索，按项目筛选，可选显示已归档与子会话；列表显示运行状态、目标阶段与最近活跃时间 |
-| 上下文 | 选中会话后显示最近 6 条对话，发消息前不用切过去看 |
+| 能力 | 工具 | 作用 |
+| --- | --- | --- |
+| 会话发现 | `session_hub_list` | 跨项目列出会话（标题、项目、运行中、归档、当前目标），可按关键词过滤 |
+| 跨会话消息 | `session_hub_message` | 给任意会话发消息（含跨项目、冷会话自动唤醒），正文带「来自哪个会话」，并给出回复方式 |
+| 会话管理 | `session_hub_session` | 新建、更名、归档 / 取消归档、置顶 / 取消置顶、停止当前轮、复制会话 |
+| 目标管理 | `session_hub_goal` | 读取、新建、编辑、暂停、恢复、开始、完成、清除**任意会话**的目标 |
+| 对话预览 | `session_hub_preview` | 读取任意会话最近几条对话，发消息前先看上下文 |
 
-侧栏入口上的绿色角标是当前运行中的会话数。
+没有侧栏按钮、没有管理面板、没有独立页面。
 
-## 模型侧工具
+## 设置
 
-除了 GUI，插件还注册了 4 个工具，让会话里的 Agent 也能跨项目操作：
+设置 → 会话管理：
 
-| 工具 | 作用 |
-| --- | --- |
-| `session_hub_list` | 跨项目列出会话（标题、项目、运行中、归档、当前目标），可按关键词过滤 |
-| `session_hub_message` | 给任意会话发消息（含跨项目、冷会话自动唤醒），正文带「来自哪个会话」，并给出回复方式 |
-| `session_hub_goal` | 读取 / 新建 / 编辑 / 暂停 / 恢复 / 开始 / 完成 / 清除**任意会话**的目标；`start` 会立即给目标会话发一轮启动指令 |
-| `session_hub_session` | 新建、更名、归档、取消归档、置顶、取消置顶 |
+- 5 个开关对应上面 5 项能力，默认全开；
+- 开关立即保存到 `~/.dsh/storages/session-hub.json`，下一条工具调用就生效；
+- 工具定义不会动态消失（DSH 的工具表在会话激活时固定），所以关闭的能力表现为「调用被拒绝」，错误信息会指出是哪一项。
 
-工具是宿主路由的薄封装，共用同一套校验与错误映射；工具注册失败只记日志，不影响 GUI 路由。
+## 目标语义（重要）
 
-## 工作原理
+- 新建目标本身就是 `armed`，目标驱动器会在会话空闲时排下一轮，**不会**额外合成人类消息；
+- `start` / `resume` 无条件调用 `ctx.goals.resume`，用于会话重启、fork 或 disarmed 后重新启用续行；active 也会真正 rearm，不是空操作；
+- 只有 goal 消息消耗 `maxGoalRounds`，插件不注入任何合成用户消息，因此不会绕过轮次预算，也不会一次启动产生两条 `goal_round`；
+- 已完成的目标不能 start / resume，会返回 409；目标服务的业务错误统一映射为 409，不落成 500。
 
-宿主侧只调用 DSH 已有服务，不新增会话事件类型，也不落插件私有状态：
+## 实现
 
-- 列表：`sessionController.list` + `sessionQuery.readTitleSnapshots`，标题优先用列表里的投影 hint；
-- 归档 / 置顶集合：`workspaceController.follow` 的 baseline 与增量，断流时保留上一帧；
-- 写操作：`sessionController.create / rename / prompt / cancel / fork`，`workspaceRegistry.archiveSession / unarchiveSession / pinSession / unpinSession`；
-- 目标：`sessionController.resolveAgent` 拿到在线 Agent 后调用 `ctx.goals`，所以可以给**别的会话**建目标、改目标、启动目标；
-- 项目名：`workspaceRegistry.list()`，没有登记工作区的会话退回目录名。
+宿主侧只调用 DSH 已有服务，不新增会话事件类型：
 
-所有接口都在 `/session-hub/api/*`，只信任本机回环 Host + 同源 Origin；POST 还要求 `x-session-hub: 1` 头，挡住普通跨站表单。
+- 列表：`sessionController.list` + `sessionQuery.readTitleSnapshots`（标题有 60 秒缓存），归档/置顶集合来自 `workspaceController.follow` 的 baseline 与增量；
+- 会话：`sessionController.create / rename / cancel / fork`，`workspaceRegistry.archiveSession / unarchiveSession / pinSession / unpinSession`；
+- 目标：`sessionController.resolveAgent` 拿到在线 Agent 后调用 `ctx.goals`，所以可以操作**别的会话**的目标；
+- 预览：`sessionQuery.readSession` 折叠最近 20 条用户/助手消息，5 秒缓存。
 
-## 使用
+设置接口在 `/dsh-session-hub/api/capabilities`，只信任本机回环 Host + 同源 Origin；POST 额外要求 `x-session-hub: 1` 头。本机进程视为可信，接口不读取会话正文。
 
-1. 在「插件」页启用本插件（或把它加进 profile 的 bundles）；
-2. 刷新页面，侧栏底部出现列表图标；
-3. 点开即可管理；需要宿主侧生效的改动要重启 DSH，纯客户端改动刷新页面即可。
-
-## 安装（本机开发）
+## 安装
 
 ```powershell
-# 在 profile 的 package.json 里加 link 依赖，并把包名加进 dsh.profile.bundles
+# profile 的 package.json 加 link 依赖，并把包名加入 dsh.profile.bundles
 "@local/dsh-session-hub": "link:C:/Projects/work/dsh-plugins/dsh-session-hub"
 pnpm install --ignore-scripts
 ```
 
+改动宿主侧代码后需要重启 DSH；只改客户端设置页刷新页面即可。
+
 ## 自测
 
 ```powershell
-npm test        # 宿主路由 + 模型工具：43 项断言，假服务覆盖列表/新建/更名/归档/置顶/消息/目标/安全守卫
+npm test
 ```
 
-客户端改动另用 dsh-plugin-dev 的 `client-harness.mjs` 渲染 `sidebar.footer.action`，再在 390px 视口核对一次布局。
+42 项断言，覆盖：能力开关的读写/落盘/拒绝、5 个工具注册、列表/预览/消息/会话/目标动作、`start` 只调用 `goals.resume` 且不产生 `prompt`、active 目标会真正 resume、已完成目标拒绝启动、revision 冲突、安全守卫。
 
-## 已知边界
+## 与其他插件的区别
 
-- 冷会话的「当前目标」在列表里显示为空，只有在线会话能同步读 `ctx.goals`；对它执行目标动作时宿主会先唤醒该会话。
-- 归档运行中的会话会先要求二次确认，确认后带 `stopActivity` 停止当前工作。
-- 插件不做会话删除（DSH 没有删除接口），归档是唯一的收起方式。
+- 内置 `session_send` / `session_peers`（dsh-session-messaging）主要面向同一目录、在线会话；本插件不限制项目目录，且冷会话可唤醒。
+- 工具名使用 `session_hub_*`，与内置 `create_goal` / `update_goal` / `session_send` 不冲突。
+- 如果不再需要 dsh-session-messaging，可以卸载它；本插件不依赖它。

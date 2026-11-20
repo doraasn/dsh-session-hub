@@ -1,6 +1,6 @@
 /**
- * 宿主侧自测：用假服务把每条路由跑一遍，断言状态码与返回结构。
- * 不联网、不碰真实 ~/.dsh，也不需要 DSH 进程。
+ * 宿主侧自测：用假服务跑通模型工具与能力开关。
+ * 不联网、不碰真实 ~/.dsh（DSH_HOME 指向临时目录）。
  *
  * 用法: npm test
  */
@@ -13,18 +13,29 @@ process.env.DSH_HOME = HOME
 
 const { apply } = await import(new URL('../lib/index.js', import.meta.url).href)
 
-/** 记录所有写动作，断言路由真的调到了对应服务。 */
+/** 记录所有服务调用，断言工具真的落到了对应服务。 */
 const calls = []
 const agents = [{ id: 'session-1' }, { id: 'session-3' }]
 const goalsBySession = new Map([
   ['session-1', {
     id: 'goal-1',
     revision: 2,
-    objective: '把会话管理插件做完',
+    objective: '把会话管理能力收进工具',
     phase: 'active',
     roundsStarted: 1,
     maxGoalRounds: 20,
-    activation: 'armed',
+    activation: 'disarmed',
+    createdAt: 1000,
+    updatedAt: 2000,
+  }],
+  ['session-3', {
+    id: 'goal-3',
+    revision: 5,
+    objective: '已经完成的目标',
+    phase: 'complete',
+    roundsStarted: 5,
+    maxGoalRounds: 5,
+    activation: 'disarmed',
     createdAt: 1000,
     updatedAt: 2000,
   }],
@@ -40,7 +51,6 @@ const services = {
             updatedAt: 3000,
             running: false,
             blank: false,
-            agentAvailable: true,
             cwd: 'C:\\Projects\\Alpha',
             projections: { values: { title: 'Alpha 会话' } },
           },
@@ -49,7 +59,6 @@ const services = {
             updatedAt: 2500,
             running: false,
             blank: false,
-            agentAvailable: true,
             cwd: 'C:\\Projects\\Beta',
           },
           {
@@ -57,7 +66,6 @@ const services = {
             updatedAt: 2000,
             running: true,
             blank: false,
-            agentAvailable: true,
             cwd: 'C:\\Projects\\Alpha',
           },
           {
@@ -65,7 +73,6 @@ const services = {
             updatedAt: 1000,
             running: false,
             blank: false,
-            agentAvailable: true,
             cwd: 'C:\\Projects\\Alpha',
             origin: 'subagent',
           },
@@ -108,8 +115,12 @@ const services = {
     async readSession() {
       return {
         events: [
-          { type: 'user/message', time: 1, data: { message: { content: [{ type: 'text', text: '你好' }] } } },
-          { type: 'assistant/message', time: 2, data: { message: { content: [{ type: 'text', text: '在的' }] } } },
+          { type: 'user/message', time: 1, data: { message: { content: [{ type: 'text', text: '第一条' }] } } },
+          { type: 'user/message', time: 2, data: { message: { content: [{ type: 'text', text: '第二条' }] } } },
+          { type: 'user/message', time: 3, data: { message: { content: [{ type: 'text', text: '第三条' }] } } },
+          { type: 'user/message', time: 4, data: { message: { content: [{ type: 'text', text: '第四条' }] } } },
+          { type: 'assistant/message', time: 5, data: { message: { content: [{ type: 'text', text: '第五条' }] } } },
+          { type: 'assistant/message', time: 6, data: { message: { content: [{ type: 'text', text: '第六条' }] } } },
         ],
       }
     },
@@ -123,9 +134,6 @@ const services = {
     },
     async archiveSession(sessionId, options) {
       calls.push(['archiveSession', { sessionId, ...options }])
-      if (sessionId === 'session-3' && options?.stopActivity !== true) {
-        throw new Error('session-3 is active; retry with stopActivity')
-      }
     },
     async unarchiveSession(sessionId) {
       calls.push(['unarchiveSession', { sessionId }])
@@ -175,7 +183,8 @@ const services = {
     },
     resume(agent, ref) {
       calls.push(['goalResume', ref])
-      return { ...goalsBySession.get(agent.id), phase: 'active', revision: ref.revision + 1 }
+      const base = goalsBySession.get(agent.id)
+      return { ...(base ?? { id: ref.id, objective: 'x' }), phase: 'active', activation: 'armed', revision: ref.revision + 1 }
     },
     complete(agent, ref) {
       calls.push(['goalComplete', ref])
@@ -189,7 +198,7 @@ const services = {
   logger: { warn() {} },
 }
 
-/** 捕获插件注册的模型工具，验证它们也是薄封装。 */
+/** 捕获插件注册的模型工具。 */
 const registeredTools = new Map()
 services.tools = {
   register(definition) {
@@ -265,95 +274,59 @@ const check = (name, condition, extra = '') => {
     console.log(`  FAIL  ${name}${extra ? '  ' + extra : ''}`)
   }
 }
-const post = (url, body, extra = {}) => call(url, { method: 'POST', body, ...extra })
+const post = (path, body, extra = {}) => call(path, { method: 'POST', body, ...extra })
 
-// 等 follow 的第一帧落地
+// 等 follow 第一帧落地
 await new Promise((resolve) => setTimeout(resolve, 50))
 
-const state = await call('/session-hub/api/state')
-const sessionList = state.body.sessions ?? []
-check('状态接口 200', state.status === 200)
-check('默认隐藏子会话', sessionList.every((item) => item.id !== 'session-sub'), JSON.stringify(sessionList.map((item) => item.id)))
-check('标题 hint 优先', sessionList.find((item) => item.id === 'session-1')?.title === 'Alpha 会话')
-check('冷会话标题批量读取', sessionList.find((item) => item.id === 'session-2')?.title === 'Beta 会话')
-check('项目名来自工作区', sessionList.find((item) => item.id === 'session-1')?.project === '项目 A')
-check('归档集合来自 follow', sessionList.find((item) => item.id === 'session-2')?.archived === true)
-check('在线目标随列表返回', sessionList.find((item) => item.id === 'session-1')?.goal?.objective === '把会话管理插件做完')
-check('计数正确', state.body.counts.total === 3 && state.body.counts.archived === 1, JSON.stringify(state.body.counts))
+/* ── 设置接口 ──────────────────────────────────────────────────────────── */
+const caps = await call('/dsh-session-hub/api/capabilities')
+check('能力接口 200', caps.status === 200)
+check('默认全部开启', Object.values(caps.body.capabilities).every(Boolean), JSON.stringify(caps.body.capabilities))
+check('返回能力说明表', caps.body.table?.messaging?.tool === 'session_hub_message')
 
-const withSub = await call('/session-hub/api/state?includeSubagents=1&force=1')
-check('可选包含子会话', withSub.body.sessions.some((item) => item.id === 'session-sub'))
-
-const preview = await call('/session-hub/api/preview?session=session-1')
-check('预览返回最近对话', preview.body.messages?.length === 2 && preview.body.messages[1].role === 'assistant')
-
-const goal = await call('/session-hub/api/goal?session=session-1')
-check('目标查询返回当前目标', goal.body.goal?.phase === 'active' && goal.body.live === true)
-
-const rename = await post('/session-hub/api/session/rename', { sessionId: 'session-1', title: '新名字' })
-check('更名成功', rename.status === 200 && rename.body.title === '新名字')
-check('更名调用服务', calls.some(([name, payload]) => name === 'rename' && payload.title === '新名字'))
-
-const message = await post('/session-hub/api/session/message', { sessionId: 'session-2', message: '来对齐一下', mode: 'queue', clientTimeZone: 'Asia/Shanghai' })
-check('跨项目发消息成功', message.status === 200 && message.body.accepted === true)
-const promptCall = calls.find(([name]) => name === 'prompt')
-check('消息走 prompt 且带时区', promptCall?.[1]?.content?.[0]?.text === '来对齐一下' && promptCall?.[1]?.clientTimeZone === 'Asia/Shanghai')
-
-const activeArchive = await post('/session-hub/api/session/archive', { sessionId: 'session-3', archived: true })
-check('运行中归档返回 409', activeArchive.status === 409 && activeArchive.body.error?.code === 'session-active')
-const forcedArchive = await post('/session-hub/api/session/archive', { sessionId: 'session-3', archived: true, stopActivity: true })
-check('确认后归档成功', forcedArchive.status === 200 && forcedArchive.body.archived === true)
-
-const unarchive = await post('/session-hub/api/session/archive', { sessionId: 'session-2', archived: false })
-check('取消归档成功', unarchive.status === 200 && unarchive.body.archived === false)
-
-const pin = await post('/session-hub/api/session/pin', { sessionId: 'session-1', pinned: true })
-check('置顶成功', pin.status === 200 && pin.body.pinned === true)
-
-const created = await post('/session-hub/api/session/create', { cwd: 'C:\\Projects\\Alpha', title: '新建会话' })
-check('新建会话并命名', created.status === 200 && created.body.sessionId === 'session-new' && created.body.title === '新建会话')
-
-const createGoal = await post('/session-hub/api/goal/action', {
-  sessionId: 'session-3',
-  action: 'create',
-  objective: '梳理会话通信方案',
-  maxGoalRounds: 8,
-  start: true,
-})
-check('给别的会话建目标并启动', createGoal.status === 200 && createGoal.body.goal?.id === 'goal-2' && createGoal.body.started === true)
-check('启动目标会发一轮消息', calls.some(([name, payload]) => name === 'prompt' && payload.sessionId === 'session-3' && payload.content[0].text.includes('开始执行当前目标')))
-
-const pause = await post('/session-hub/api/goal/action', { sessionId: 'session-1', action: 'pause', revision: 2 })
-check('暂停目标', pause.status === 200 && pause.body.goal?.phase === 'paused')
-const conflict = await post('/session-hub/api/goal/action', { sessionId: 'session-1', action: 'pause', revision: 1 })
-check('revision 冲突被拒', conflict.status === 409 && conflict.body.error?.code === 'goal-revision-conflict')
-
-const missingGoal = await post('/session-hub/api/goal/action', { sessionId: 'session-3', action: 'pause' })
-check('无目标时报 404', missingGoal.status === 404 && missingGoal.body.error?.code === 'no-goal')
-
-const cancel = await post('/session-hub/api/session/cancel', { sessionId: 'session-3' })
-check('停止当前轮', cancel.status === 200 && cancel.body.accepted === true)
-const fork = await post('/session-hub/api/session/fork', { sessionId: 'session-1' })
-check('复制会话', fork.status === 200 && fork.body.sessionId === 'session-forked')
-
-const noCsrf = await post('/session-hub/api/session/rename', { sessionId: 'session-1', title: 'x' }, { csrf: false })
-check('缺少 CSRF 头被拒', noCsrf.status === 403 && noCsrf.body.error?.code === 'missing-csrf-header')
-const badHost = await call('/session-hub/api/state', { host: 'evil.example' })
-check('非回环 Host 被拒', badHost.status === 403)
-const badOrigin = await call('/session-hub/api/state', { origin: 'https://evil.example' })
-check('跨站 Origin 被拒', badOrigin.status === 403)
-const badMessage = await post('/session-hub/api/session/message', { sessionId: 'session-1', message: '' })
-check('空消息被拒', badMessage.status === 400 && badMessage.body.error?.code === 'bad-message')
-const missingAgent = await post('/session-hub/api/goal/action', { sessionId: 'session-missing', action: 'create', objective: 'x' })
-check('无法唤醒会话时 409', missingAgent.status === 409 && missingAgent.body.error?.code === 'session-unavailable')
-
-// 模型侧工具：注册齐、跨项目消息带来源、目标/会话动作复用同一套服务
-check('注册 4 个模型工具', registeredTools.size === 4, JSON.stringify([...registeredTools.keys()]))
-const listTool = registeredTools.get('session_hub_list')
-const listed = await listTool.execute({ limit: 2 })
-check('列表工具按上限返回', listed.sessions.length === 2 && listed.sessions[0].sessionId === 'session-1')
+const disable = await post('/dsh-session-hub/api/capabilities', { messaging: false })
+check('关闭跨会话消息', disable.status === 200 && disable.body.capabilities.messaging === false)
+check('开关已落盘', JSON.parse(fs.readFileSync(path.join(HOME, 'storages', 'session-hub.json'), 'utf8')).messaging === false)
+const capsAfter = await call('/dsh-session-hub/api/capabilities')
+check('再次读取保持关闭', capsAfter.body.capabilities.messaging === false)
 
 const messageTool = registeredTools.get('session_hub_message')
+const disabledCall = await messageTool.execute({ sessionId: 'session-2', message: 'x' }, { agent: { id: 'session-caller' } }).catch((error) => error)
+check('关闭后消息工具被拒绝', disabledCall?.code === 'capability-disabled', disabledCall?.message || '')
+const enable = await post('/dsh-session-hub/api/capabilities', { messaging: true })
+check('重新开启跨会话消息', enable.status === 200 && enable.body.capabilities.messaging === true)
+
+const noCsrf = await post('/dsh-session-hub/api/capabilities', { messaging: false }, { csrf: false })
+check('缺少 CSRF 头被拒', noCsrf.status === 403 && noCsrf.body.error?.code === 'missing-csrf-header')
+const badHost = await call('/dsh-session-hub/api/capabilities', { host: 'evil.example' })
+check('非回环 Host 被拒', badHost.status === 403)
+const badOrigin = await call('/dsh-session-hub/api/capabilities', { origin: 'https://evil.example' })
+check('跨站 Origin 被拒', badOrigin.status === 403)
+const badCap = await post('/dsh-session-hub/api/capabilities', { nope: true })
+check('未知开关被拒', badCap.status === 400 && badCap.body.error?.code === 'bad-capability')
+const badType = await post('/dsh-session-hub/api/capabilities', { messaging: 'yes' })
+check('非布尔开关被拒', badType.status === 400 && badType.body.error?.code === 'bad-capability')
+const oldRoute = await call('/dsh-session-hub/api/state')
+check('旧会话数据路由已移除', oldRoute.status === 404)
+
+/* ── 工具注册 ──────────────────────────────────────────────────────────── */
+check('注册 5 个模型工具', registeredTools.size === 5, JSON.stringify([...registeredTools.keys()]))
+
+/* ── 列表与预览 ────────────────────────────────────────────────────────── */
+const listTool = registeredTools.get('session_hub_list')
+const listed = await listTool.execute({ limit: 2 })
+check('列表按上限返回', listed.sessions.length === 2 && listed.sessions[0].sessionId === 'session-1')
+check('归档集合来自 follow', (await listTool.execute({ includeArchived: true })).sessions.find((item) => item.sessionId === 'session-2')?.archived === true)
+check('默认隐藏子会话', (await listTool.execute({})).sessions.every((item) => item.sessionId !== 'session-sub'))
+check('可选包含子会话', (await listTool.execute({ includeSubagents: true })).sessions.some((item) => item.sessionId === 'session-sub'))
+check('项目名来自工作区', listed.sessions[0].project === '项目 A')
+
+const previewTool = registeredTools.get('session_hub_preview')
+const preview = await previewTool.execute({ sessionId: 'session-1', limit: 2 })
+check('预览只返回最近 N 条', preview.messages.length === 2 && preview.messages[1].text === '第六条')
+
+/* ── 跨会话消息 ────────────────────────────────────────────────────────── */
 const toolMessage = await messageTool.execute({ sessionId: 'session-2', message: '工具通道测试' }, { agent: { id: 'session-caller' } })
 check('消息工具返回来源', toolMessage.accepted === true && toolMessage.from === 'session-caller')
 const toolPrompt = calls.filter(([name]) => name === 'prompt').at(-1)
@@ -361,21 +334,51 @@ check('消息工具加来源前缀', toolPrompt?.[1]?.content?.[0]?.text.include
 const selfMessage = await messageTool.execute({ sessionId: 'session-caller', message: 'x' }, { agent: { id: 'session-caller' } }).catch((error) => error)
 check('消息工具拒绝发给自己', selfMessage?.code === 'self-send')
 
-const goalTool = registeredTools.get('session_hub_goal')
-const goalRead = await goalTool.execute({ sessionId: 'session-1', action: 'get' })
-check('目标工具读取当前目标', goalRead.goal?.phase === 'active')
-const goalCreate = await goalTool.execute({ sessionId: 'session-3', action: 'create', objective: '工具建目标', start: true })
-check('目标工具给别的会话建并启动', goalCreate.goal?.id === 'goal-2' && goalCreate.started === true)
-
+/* ── 会话管理 ──────────────────────────────────────────────────────────── */
 const sessionTool = registeredTools.get('session_hub_session')
 const toolCreate = await sessionTool.execute({ action: 'create', cwd: 'C:\\Projects\\Alpha', title: '工具建会话' })
-check('会话工具新建并命名', toolCreate.sessionId === 'session-new' && toolCreate.title === '工具建会话')
+check('新建并命名', toolCreate.sessionId === 'session-new' && toolCreate.title === '工具建会话')
 const toolRename = await sessionTool.execute({ action: 'rename', sessionId: 'session-1', title: '工具改名' })
-check('会话工具改名', toolRename.title === '工具改名')
-const toolArchive = await sessionTool.execute({ action: 'archive', sessionId: 'session-1', stopActivity: true })
-check('会话工具归档', toolArchive.archived === true)
+check('更名', toolRename.title === '工具改名')
 const toolPin = await sessionTool.execute({ action: 'pin', sessionId: 'session-2' })
-check('会话工具置顶', toolPin.pinned === true)
+check('置顶', toolPin.pinned === true)
+const toolArchive = await sessionTool.execute({ action: 'archive', sessionId: 'session-1', stopActivity: true })
+check('归档带 stopActivity', toolArchive.archived === true && calls.some(([name, payload]) => name === 'archiveSession' && payload.stopActivity === true))
+const toolCancel = await sessionTool.execute({ action: 'cancel', sessionId: 'session-3' })
+check('停止当前轮', toolCancel.accepted === true)
+const toolFork = await sessionTool.execute({ action: 'fork', sessionId: 'session-1' })
+check('复制会话', toolFork.sessionId === 'session-forked' && toolFork.forkedFrom === 'session-1')
+
+/* ── 目标 ──────────────────────────────────────────────────────────────── */
+const goalTool = registeredTools.get('session_hub_goal')
+const goalRead = await goalTool.execute({ sessionId: 'session-1', action: 'get' })
+check('读取当前目标', goalRead.goal?.phase === 'active' && goalRead.live === true)
+
+const promptCountBefore = calls.filter(([name]) => name === 'prompt').length
+const goalCreate = await goalTool.execute({ sessionId: 'session-1', action: 'create', objective: '工具建目标', start: false })
+check('新建目标不启动', goalCreate.goal?.id === 'goal-2' && goalCreate.started === false)
+check('新建目标不产生消息', calls.filter(([name]) => name === 'prompt').length === promptCountBefore)
+
+const createAndStart = await goalTool.execute({ sessionId: 'session-1', action: 'create', objective: '工具建目标并启动', start: true })
+check('新建并启动走 resume', createAndStart.started === true && calls.some(([name]) => name === 'goalResume'))
+check('启动不合成人类消息', calls.filter(([name]) => name === 'prompt').length === promptCountBefore)
+
+const startActive = await goalTool.execute({ sessionId: 'session-1', action: 'start', revision: 2 })
+check('active 目标也真正 resume', startActive.started === true && calls.filter(([name]) => name === 'goalResume').length >= 2)
+check('start 全程没有 prompt', calls.filter(([name]) => name === 'prompt').length === promptCountBefore)
+
+const pause = await goalTool.execute({ sessionId: 'session-1', action: 'pause', revision: 2 })
+check('暂停目标', pause.goal?.phase === 'paused')
+const conflict = await goalTool.execute({ sessionId: 'session-1', action: 'pause', revision: 1 }).catch((error) => error)
+check('revision 冲突被拒', conflict?.code === 'goal-revision-conflict')
+const completeStart = await goalTool.execute({ sessionId: 'session-3', action: 'start' }).catch((error) => error)
+check('已完成目标不能启动', completeStart?.code === 'goal-complete' && completeStart?.status === 409)
+
+const missingAgent = await goalTool.execute({ sessionId: 'session-missing', action: 'get' })
+check('冷会话读取返回 live=false', missingAgent.live === false)
+
+const clear = await goalTool.execute({ sessionId: 'session-1', action: 'clear', revision: 2 })
+check('清除目标', clear.cleared === true && clear.goal === null)
 
 console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
 process.exit(failed === 0 ? 0 : 1)

@@ -2,11 +2,13 @@
 
 ## 0.1.0 — 2026-11-20
 
-首个版本。
+首个版本，只面向会话 Agent 提供工具能力，无侧栏入口。
 
-- 侧栏「会话管理」入口：全屏面板，跨项目列出会话，搜索、按项目筛选、显示归档 / 子会话。
-- 会话通信：给任意会话发消息（排队 / 插话），冷会话自动唤醒。
-- 会话管理：新建、更名、归档 / 取消归档、置顶 / 取消置顶、打开、复制会话、停止当前轮、最近对话预览。
-- 目标：读取、新建、编辑、暂停、恢复、完成、清除；新建并开始、立即开始。
-- 模型侧工具：`session_hub_list`、`session_hub_message`、`session_hub_goal`、`session_hub_session`。
-- 宿主路由只信任本机回环 + 同源，POST 额外要求 `x-session-hub: 1`。
+- `session_hub_list`：跨项目列出会话。
+- `session_hub_message`：给任意会话发消息，冷会话自动唤醒。
+- `session_hub_session`：新建、更名、归档 / 取消归档、置顶 / 取消置顶、停止当前轮、复制会话。
+- `session_hub_goal`：读取、新建、编辑、暂停、恢复、开始、完成、清除任意会话的目标。
+- `session_hub_preview`：读取任意会话最近几条对话。
+- 设置 → 会话管理：逐项开关 5 项能力，保存到 `~/.dsh/storages/session-hub.json`。
+- `start` / `resume` 只调用 `ctx.goals.resume`，不注入合成人类消息，不绕过 `maxGoalRounds`。
+- 设置接口只信任本机回环 + 同源，POST 额外要求 `x-session-hub: 1`。
