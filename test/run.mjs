@@ -312,6 +312,7 @@ check('旧会话数据路由已移除', oldRoute.status === 404)
 
 /* ── 工具注册 ──────────────────────────────────────────────────────────── */
 check('注册 5 个模型工具', registeredTools.size === 5, JSON.stringify([...registeredTools.keys()]))
+check('每个工具都声明 output', [...registeredTools.values()].every((tool) => tool.output?.schema && typeof tool.output.render === 'function'))
 
 /* ── 列表与预览 ────────────────────────────────────────────────────────── */
 const listTool = registeredTools.get('session_hub_list')
@@ -378,7 +379,7 @@ const missingAgent = await goalTool.execute({ sessionId: 'session-missing', acti
 check('冷会话读取返回 live=false', missingAgent.live === false)
 
 const clear = await goalTool.execute({ sessionId: 'session-1', action: 'clear', revision: 2 })
-check('清除目标', clear.cleared === true && clear.goal === null)
+check('清除目标', clear.cleared === true && clear.goal === undefined)
 
 console.log(`\n结果: ${passed} 通过 / ${failed} 失败`)
 process.exit(failed === 0 ? 0 : 1)
