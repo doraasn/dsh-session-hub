@@ -15,7 +15,21 @@ const { apply } = await import(new URL('../lib/index.js', import.meta.url).href)
 
 /** 记录所有服务调用，断言工具真的落到了对应服务。 */
 const calls = []
-const agents = [{ id: 'session-1' }, { id: 'session-3' }]
+/** 在线 Agent：记录 steer/followup，并带 session 供 flush。 */
+function makeAgent(id) {
+  return {
+    id,
+    session: { id },
+    status: 'idle',
+    steer(message) {
+      calls.push(['steer', { id, message }])
+    },
+    followup(message) {
+      calls.push(['followup', { id, message }])
+    },
+  }
+}
+const agents = [makeAgent('session-1'), makeAgent('session-3')]
 const goalsBySession = new Map([
   ['session-1', {
     id: 'goal-1',
@@ -101,7 +115,7 @@ const services = {
     },
     async resolveAgent(sessionId) {
       if (sessionId === 'session-missing') return { error: { code: 'session/not-found', message: 'missing' } }
-      return { agent: { id: sessionId } }
+      return { agent: makeAgent(sessionId) }
     },
   },
   sessionQuery: {
@@ -159,6 +173,12 @@ const services = {
   agents: {
     list: () => agents,
     get: (id) => agents.find((agent) => agent.id === id),
+  },
+  sessions: {
+    async flush() {
+      calls.push(['flush'])
+      return true
+    },
   },
   goals: {
     get: (agent) => goalsBySession.get(agent.id),
@@ -333,8 +353,11 @@ check('预览只返回最近 N 条', preview.messages.length === 2 && preview.me
 /* ── 跨会话消息 ────────────────────────────────────────────────────────── */
 const toolMessage = await messageTool.execute({ sessionId: 'session-2', message: '工具通道测试' }, { agent: { id: 'session-caller' } })
 check('消息工具返回来源', toolMessage.accepted === true && toolMessage.from === 'session-caller')
-const toolPrompt = calls.filter(([name]) => name === 'prompt').at(-1)
-check('消息工具加来源前缀', toolPrompt?.[1]?.content?.[0]?.text.includes('[跨会话消息 来自 session-caller]') === true)
+check('消息工具返回 messageId', typeof toolMessage.messageId === 'string' && toolMessage.messageId.length > 0)
+const toolDelivery = calls.filter(([name]) => name === 'followup' || name === 'steer').at(-1)
+check('消息走 Agent 收件箱并带 peer source', toolDelivery?.[1]?.message?.source?.kind === 'session-hub-message' && toolDelivery?.[1]?.message?.source?.senderSessionId === 'session-caller')
+check('消息正文带来源前缀', toolDelivery?.[1]?.message?.content?.[0]?.text.includes('[session-hub-message]') === true)
+check('消息后执行 flush', calls.some(([name]) => name === 'flush'))
 const selfMessage = await messageTool.execute({ sessionId: 'session-caller', message: 'x' }, { agent: { id: 'session-caller' } }).catch((error) => error)
 check('消息工具拒绝发给自己', selfMessage?.code === 'self-send')
 
@@ -358,18 +381,18 @@ const goalTool = registeredTools.get('session_hub_goal')
 const goalRead = await goalTool.execute({ sessionId: 'session-1', action: 'get' })
 check('读取当前目标', goalRead.goal?.phase === 'active' && goalRead.live === true)
 
-const promptCountBefore = calls.filter(([name]) => name === 'prompt').length
+const deliveryCountBefore = calls.filter(([name]) => name === 'followup' || name === 'steer').length
 const goalCreate = await goalTool.execute({ sessionId: 'session-1', action: 'create', objective: '工具建目标', start: false })
 check('新建目标不启动', goalCreate.goal?.id === 'goal-2' && goalCreate.started === false)
-check('新建目标不产生消息', calls.filter(([name]) => name === 'prompt').length === promptCountBefore)
+check('新建目标不产生消息', calls.filter(([name]) => name === 'followup' || name === 'steer').length === deliveryCountBefore)
 
 const createAndStart = await goalTool.execute({ sessionId: 'session-1', action: 'create', objective: '工具建目标并启动', start: true })
 check('新建并启动走 resume', createAndStart.started === true && calls.some(([name]) => name === 'goalResume'))
-check('启动不合成人类消息', calls.filter(([name]) => name === 'prompt').length === promptCountBefore)
+check('启动不合成人类消息', calls.filter(([name]) => name === 'followup' || name === 'steer').length === deliveryCountBefore)
 
 const startActive = await goalTool.execute({ sessionId: 'session-1', action: 'start', revision: 2 })
 check('active 目标也真正 resume', startActive.started === true && calls.filter(([name]) => name === 'goalResume').length >= 2)
-check('start 全程没有 prompt', calls.filter(([name]) => name === 'prompt').length === promptCountBefore)
+check('start 全程没有消息投递', calls.filter(([name]) => name === 'followup' || name === 'steer').length === deliveryCountBefore)
 
 const pause = await goalTool.execute({ sessionId: 'session-1', action: 'pause', revision: 2 })
 check('暂停目标', pause.goal?.phase === 'paused')

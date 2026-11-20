@@ -23,6 +23,14 @@
 - 子会话（`origin: 'subagent'`）不能作为跨会话消息目标，必须走父子通道；
 - 发消息时可带 `writeScopes`，与其他会话已声明的路径重叠时返回 `conflicts`，只提示、不拦截。
 
+## 消息样式与投递
+
+- 消息不再走 `sessionController.prompt`，而是直接投进目标 Agent 的收件箱：`queue` 用 `followup`（next-turn），`steer` 用 `steer`（next-step）；
+- 消息带 `source: { kind: 'session-hub-message', form: 'relay', senderSessionId, messageId }`，不是普通 user source；
+- DSH Client 对非 user source 的唤醒消息会渲染成「收到执行请求」折叠卡（core `turn-trigger`），正文包含来源、时间、写作用域与 peer 边界声明——与之前 `session-message` 的样式一致；
+- 目标空闲时这条消息会唤醒一轮；运行中按 queue/steer 投递；
+- 投递后调用 `sessions.flush` 确认持久化。
+
 ## 设置
 
 设置 → 会话管理：
@@ -66,7 +74,7 @@ pnpm install --ignore-scripts
 npm test
 ```
 
-52 项断言，覆盖：能力开关的读写/落盘/拒绝、6 个工具注册、列表/预览/消息/会话/目标动作、接收免打扰与写作用域冲突、子会话拒绝、`start` 只调用 `goals.resume` 且不产生 `prompt`、active 目标会真正 resume、已完成目标拒绝启动、revision 冲突、安全守卫。
+55 项断言，覆盖：能力开关的读写/落盘/拒绝、6 个工具注册、列表/预览/消息/会话/目标动作、接收免打扰与写作用域冲突、子会话拒绝、消息带 peer source 与 flush、`start` 只调用 `goals.resume` 且不产生消息投递、active 目标会真正 resume、已完成目标拒绝启动、revision 冲突、安全守卫。
 
 ## 与其他插件的区别
 

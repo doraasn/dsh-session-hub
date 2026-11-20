@@ -6,6 +6,7 @@
 
 - `session_hub_list`：跨项目列出会话（含是否免打扰、写作用域）。
 - `session_hub_message`：给任意会话发消息，冷会话自动唤醒；拒绝子会话；写作用域冲突提示。
+- 消息改为直接投进 Agent 收件箱（`followup`/`steer`），带 `session-hub-message` peer source，Client 渲染成「收到执行请求」折叠卡，不再显示成普通用户气泡。
 - `session_hub_reception`：每个会话自行关闭/恢复跨会话消息，声明写作用域；只能改自己的。
 - `session_hub_session`：新建、更名、归档 / 取消归档、置顶 / 取消置顶、停止当前轮、复制会话。
 - `session_hub_goal`：读取、新建、编辑、暂停、恢复、开始、完成、清除任意会话的目标。
