@@ -1,5 +1,5 @@
 {
-  "name": "@local/dsh-session-hub",
+  "name": "dsh-session-hub",
   "version": "0.1.0",
   "description": "DSH 会话能力插件：跨项目会话通信/管理/目标工具，设置页逐项开关，无侧栏入口。",
   "author": "Y77H",
@@ -56,5 +56,8 @@
   "homepage": "https://github.com/doraasn/dsh-session-hub#readme",
   "bugs": {
     "url": "https://github.com/doraasn/dsh-session-hub/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
