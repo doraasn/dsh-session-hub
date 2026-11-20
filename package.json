@@ -1,0 +1,57 @@
+{
+  "name": "@local/dsh-session-hub",
+  "version": "0.1.0",
+  "description": "DSH 会话管理：跨项目会话通信、新建/归档/改名/置顶，以及给任意会话创建与启动目标。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "session",
+    "session-manager",
+    "session-messaging",
+    "goal",
+    "sidebar"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doraasn/dsh-session-hub.git"
+  },
+  "homepage": "https://github.com/doraasn/dsh-session-hub#readme",
+  "bugs": {
+    "url": "https://github.com/doraasn/dsh-session-hub/issues"
+  }
+}
