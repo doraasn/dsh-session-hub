@@ -127,7 +127,14 @@ const services = {
       }))
     },
     async readTitleSnapshot(sessionId) {
-      return { session: { id: sessionId, origin: sessionId === 'session-sub' ? 'subagent' : undefined } }
+      const cwdById = {
+        'session-1': 'C:\\Projects\\Alpha',
+        'session-2': 'C:\\Projects\\Beta',
+        'session-3': 'C:\\Projects\\Alpha',
+        'session-new': 'C:\\Projects\\Alpha',
+        'session-forked': 'C:\\Projects\\Alpha',
+      }
+      return { session: { id: sessionId, origin: sessionId === 'session-sub' ? 'subagent' : undefined, cwd: cwdById[sessionId] } }
     },
     async readSession() {
       return {
@@ -160,6 +167,17 @@ const services = {
     },
     async unpinSession(sessionId) {
       calls.push(['unpinSession', { sessionId }])
+    },
+    async create(path) {
+      calls.push(['workspaceCreate', path])
+      return {
+        id: 'ws-a',
+        title: '项目 A',
+        path,
+        async attachSession(sessionId) {
+          calls.push(['attachSession', { sessionId, path }])
+        },
+      }
     },
   },
   workspaceController: {
@@ -365,6 +383,8 @@ check('消息工具拒绝发给自己', selfMessage?.code === 'self-send')
 const sessionTool = registeredTools.get('session_hub_session')
 const toolCreate = await sessionTool.execute({ action: 'create', cwd: 'C:\\Projects\\Alpha', title: '工具建会话' })
 check('新建并命名', toolCreate.sessionId === 'session-new' && toolCreate.title === '工具建会话')
+check('新建会话登记工作区', toolCreate.registered === true && toolCreate.workspaceTitle === '项目 A')
+check('登记调用 attachSession', calls.some(([name, payload]) => name === 'attachSession' && payload.sessionId === 'session-new'))
 const toolRename = await sessionTool.execute({ action: 'rename', sessionId: 'session-1', title: '工具改名' })
 check('更名', toolRename.title === '工具改名')
 const toolPin = await sessionTool.execute({ action: 'pin', sessionId: 'session-2' })
@@ -375,6 +395,7 @@ const toolCancel = await sessionTool.execute({ action: 'cancel', sessionId: 'ses
 check('停止当前轮', toolCancel.accepted === true)
 const toolFork = await sessionTool.execute({ action: 'fork', sessionId: 'session-1' })
 check('复制会话', toolFork.sessionId === 'session-forked' && toolFork.forkedFrom === 'session-1')
+check('复制会话登记工作区', toolFork.registered === true && calls.some(([name, payload]) => name === 'attachSession' && payload.sessionId === 'session-forked'))
 
 /* ── 目标 ──────────────────────────────────────────────────────────────── */
 const goalTool = registeredTools.get('session_hub_goal')

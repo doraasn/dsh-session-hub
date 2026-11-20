@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.1.1 — 2026-11-20
+
+- 修复 `session_hub_session create` / `fork` 不写工作区登记：创建后按会话 cwd 调 `workspaceRegistry.create(path)` 并 `attachSession(id)`，已有工作区复用、没有则新建；结果新增 `registered` / `workspaceTitle` / `workspaceId` / `registrationWarning`。
+- 新建的会话不再落到侧栏「未分组」。
+
 ## 0.1.0 — 2026-11-20
 
 首个版本，只面向会话 Agent 提供工具能力，无侧栏入口。

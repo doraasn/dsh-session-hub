@@ -9,7 +9,7 @@
 | 会话发现 | `session_hub_list` | 跨项目列出会话（标题、项目、运行中、归档、目标、是否免打扰），可按关键词过滤 |
 | 跨会话消息 | `session_hub_message` | 给任意会话发消息（含跨项目、冷会话自动唤醒），正文带「来自哪个会话」，并给出回复方式 |
 | 消息接收控制 | `session_hub_reception` | 每个会话自行关闭/恢复跨会话消息，声明写作用域；关闭后任何会话都绕不过 |
-| 会话管理 | `session_hub_session` | 新建、更名、归档 / 取消归档、置顶 / 取消置顶、停止当前轮、复制会话 |
+| 会话管理 | `session_hub_session` | 新建（按 cwd 自动登记工作区）、更名、归档 / 取消归档、置顶 / 取消置顶、停止当前轮、复制会话 |
 | 目标管理 | `session_hub_goal` | 读取、新建、编辑、暂停、恢复、开始、完成、清除**任意会话**的目标 |
 | 对话预览 | `session_hub_preview` | 读取任意会话最近几条对话，发消息前先看上下文 |
 
@@ -30,6 +30,14 @@
 - DSH Client 对非 user source 的唤醒消息会渲染成「收到执行请求」折叠卡（core `turn-trigger`），正文包含来源、时间、写作用域与 peer 边界声明——与之前 `session-message` 的样式一致；
 - 目标空闲时这条消息会唤醒一轮；运行中按 queue/steer 投递；
 - 投递后调用 `sessions.flush` 确认持久化。
+
+## 会话登记
+
+`session_hub_session` 的 `create` 与 `fork` 会按会话 cwd 调 `workspaceRegistry.create(path)`，再 `attachSession(id)`：
+
+- 目录已有工作区 → 复用，补进 `sessionIds` 并更新 `updatedAt`；
+- 目录没有工作区 → 新建一个；
+- 登记失败不阻断会话创建，结果里返回 `registered:false` 和 `registrationWarning`，不会再静默落到「未分组」。
 
 ## 设置
 
@@ -63,7 +71,7 @@
 从 DSH 插件市场安装「会话管理」，或在 profile 的 `package.json` 里加：
 
 ```jsonc
-"dsh-session-hub": "github:doraasn/dsh-session-hub#v0.1.0"
+"dsh-session-hub": "github:doraasn/dsh-session-hub#v0.1.1"
 ```
 
 本机开发时仍可用 `link:` 指向源码目录。改动宿主侧代码后需要重启 DSH；只改客户端设置页刷新页面即可。
@@ -74,7 +82,7 @@
 npm test
 ```
 
-55 项断言，覆盖：能力开关的读写/落盘/拒绝、6 个工具注册、列表/预览/消息/会话/目标动作、接收免打扰与写作用域冲突、子会话拒绝、消息带 peer source 与 flush、`start` 只调用 `goals.resume` 且不产生消息投递、active 目标会真正 resume、已完成目标拒绝启动、revision 冲突、安全守卫。
+58 项断言，覆盖：能力开关的读写/落盘/拒绝、6 个工具注册、列表/预览/消息/会话/目标动作、新建/复制后的工作区登记、接收免打扰与写作用域冲突、子会话拒绝、消息带 peer source 与 flush、`start` 只调用 `goals.resume` 且不产生消息投递、active 目标会真正 resume、已完成目标拒绝启动、revision 冲突、安全守卫。
 
 ## 与其他插件的区别
 
