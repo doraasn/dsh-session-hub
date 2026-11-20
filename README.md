@@ -25,7 +25,7 @@
 
 ## 消息样式与投递
 
-- 消息不再走 `sessionController.prompt`，而是直接投进目标 Agent 的收件箱：`queue` 用 `followup`（next-turn），`steer` 用 `steer`（next-step）；
+- 消息不再走 `sessionController.prompt`，而是直接投进目标 Agent 的收件箱：默认 `steer`（idle 时唤醒新一轮，running 时下一步边界），显式 `queue` 才用 `followup`（下一轮）；
 - 消息带 `source: { kind: 'session-hub-message', form: 'relay', senderSessionId, messageId }`，不是普通 user source；
 - DSH Client 对非 user source 的唤醒消息会渲染成「收到执行请求」折叠卡（core `turn-trigger`），正文包含来源、时间、写作用域与 peer 边界声明——与之前 `session-message` 的样式一致；
 - 目标空闲时这条消息会唤醒一轮；运行中按 queue/steer 投递；
